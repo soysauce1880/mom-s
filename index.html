@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#faf5ed">
+  <title>엄마의 병원 달력</title>
+  <style>
+    :root { color-scheme: light; --paper:#faf5ed; --card:#fffdfa; --ink:#342a26; --muted:#655750; --line:#e8dacf; --plum:#693b51; --rose:#f5e3e7; --peach:#faead9; --green:#385747; --mint:#e8efe6; --gold:#fbe9b0; --gold-ink:#604400; --lavender:#e9defa; --lavender-ink:#56317b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.55 system-ui,"Malgun Gothic",sans-serif; word-break:keep-all; overflow-wrap:anywhere; }
+    button,input { font:inherit; }
+    button { min-height:46px; border:1px solid var(--line); border-radius:12px; padding:8px 13px; background:var(--card); color:var(--ink); font-weight:700; cursor:pointer; touch-action:manipulation; }
+    button:disabled { opacity:.55; cursor:default; }
+    :focus-visible { outline:3px solid var(--plum); outline-offset:2px; }
+    h1,h2,h3,p { margin:0; }
+    h1 { font-size:clamp(27px,6vw,40px); letter-spacing:-.055em; }
+    h2 { font-size:21px; letter-spacing:-.035em; }
+    h3 { font-size:17px; }
+    small,.muted { color:var(--muted); }
+    main { width:min(100% - 28px, 780px); margin:0 auto; padding:26px 0 40px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:17px; }
+    .today { color:var(--muted); margin-top:3px; }
+    .heart { color:var(--plum); background:var(--rose); border-radius:50%; width:47px; height:47px; flex:none; display:grid; place-items:center; font-size:23px; }
+    section,.week { min-width:0; }
+    .panel,.week { border:1px solid var(--line); background:var(--card); border-radius:19px; padding:15px; }
+    .mail { background:var(--peach); border-color:#eed6bd; }
+    .mail h2 { color:#633c2d; }
+    .mail-list { display:grid; gap:7px; margin-top:9px; }
+    .mail-list button { display:flex; align-items:center; justify-content:space-between; text-align:left; gap:8px; border-color:#e9cfb6; }
+    .mail-list b { color:var(--plum); }
+    .grid { display:grid; gap:12px; margin:13px 0; }
+    @media (min-width:620px) { .grid { grid-template-columns:1fr 1fr; } }
+    .panel-title,.week-title { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+    .panel-title h2 { font-size:18px; }
+    .measure { font-size:clamp(26px,7vw,34px); font-weight:760; letter-spacing:-.045em; margin:3px 0; }
+    .measure.small { font-size:20px; }
+    .row { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
+    .actions { margin-top:10px; }
+    .text-button { color:var(--plum); }
+    .primary { background:var(--plum); color:white; border-color:var(--plum); }
+    .done { background:var(--mint); border-color:#c9d9ca; color:var(--green); }
+    .calendar { margin-bottom:14px; }
+    .calendar-nav { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:7px; margin-bottom:10px; text-align:center; }
+    .calendar-nav button { padding-inline:10px; white-space:nowrap; }
+    .calendar-nav h2 { font-size:clamp(17px,5vw,22px); }
+    .calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:3px; }
+    .weekday { text-align:center; font-size:.84rem; color:var(--muted); }
+    .day { position:relative; min-width:0; min-height:47px; padding:2px 0 7px; border-radius:8px; font-size:.92rem; }
+    .day.planned { background:var(--peach); }
+    .day.outside { color:var(--muted); border-style:dashed; }
+    .stage-visited { background:var(--mint); color:var(--green); }
+    .stage-claimed { background:var(--gold); color:var(--gold-ink); }
+    .stage-paid { background:var(--lavender); color:var(--lavender-ink); }
+    button.day[data-marker]::after { content:attr(data-marker); position:absolute; bottom:0; left:0; right:0; font-size:10px; line-height:13px; }
+    .day[aria-pressed="true"] { outline:2px solid var(--plum); outline-offset:-2px; }
+    .legend { margin:9px 0 11px; font-size:.82rem; }
+    .legend span { padding:2px 6px; border-radius:5px; }
+    .planned-key { background:var(--peach); }
+    .date-detail { border-top:1px solid var(--line); padding-top:11px; display:grid; gap:7px; }
+    .stage-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+    .stage-actions button { padding-inline:3px; font-size:.87rem; }
+    .stage-actions button[aria-expanded="true"],.stage-actions .current-stage { border-color:currentColor; }
+    .day-stage-options { display:grid; gap:7px; padding:9px; border:1px solid var(--line); border-radius:12px; }
+    .day-stage-options .row button { flex:1 1 auto; }
+    #weeks { display:grid; gap:9px; margin-top:8px; }
+    .week { scroll-margin-top:16px; }
+    .week-title small { font-weight:700; }
+    .claim { padding-top:10px; margin-top:10px; border-top:1px solid var(--line); }
+    .claim h3 { font-size:16px; }
+    .claim .row { margin-top:6px; }
+    .claim .row button { flex:1 1 auto; }
+    .claim-date { margin-top:5px; }
+    .praise { padding:9px 11px; border-radius:10px; background:var(--rose); color:var(--plum); margin-top:10px; }
+    #save-status { margin:15px 0 0; font-size:.84rem; color:var(--muted); }
+    .warning { color:#803e2a; }
+    dialog { width:min(100% - 26px,410px); max-height:calc(100dvh - 24px); border:1px solid var(--line); border-radius:19px; padding:18px; background:var(--card); color:var(--ink); }
+    dialog::backdrop { background:#342a2670; }
+    dialog p { margin:7px 0; }
+    dialog label { display:grid; gap:4px; margin:10px 0; font-weight:650; }
+    input { width:100%; min-width:0; min-height:46px; padding:7px 9px; border:1px solid #bba79a; border-radius:8px; color:var(--ink); background:white; }
+    dialog .row { justify-content:flex-end; margin-top:13px; }
+    output { display:block; }
+    [hidden] { display:none !important; }
+    @media (max-width:360px) { main { width:calc(100% - 20px); } .panel,.week { padding:11px; } .calendar-nav button { padding-inline:6px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><div><h1>엄마의 병원 달력</h1><p class="today" id="today"></p></div><span class="heart" aria-hidden="true">♥</span></header>
+    <section class="panel mail" aria-labelledby="mail-title">
+      <h2 id="mail-title">아직 안 보낸 환급 우편</h2>
+      <div id="mail-list" class="mail-list"></div>
+    </section>
+    <div class="grid">
+      <section class="panel" aria-labelledby="stock-title">
+        <div class="panel-title"><h2 id="stock-title">남은 약</h2><button class="text-button" data-action="stock-start">시작 수량</button></div>
+        <p id="stock" class="measure"></p>
+        <p id="stock-note" class="muted"></p>
+        <div class="actions"><button data-action="stock-edit">재고 수정</button></div>
+      </section>
+      <section class="panel" aria-labelledby="bank-title">
+        <div class="panel-title"><h2 id="bank-title">통장 예상 잔고</h2></div>
+        <p id="bank" class="measure"></p>
+        <p class="muted" id="bank-note"></p>
+        <div class="row actions"><button id="bank-button" data-action="bank"></button><button data-action="cost-default">방문 기본 비용</button></div>
+      </section>
+    </div>
+    <section class="panel calendar" aria-label="월간 방문 달력">
+      <div class="calendar-nav"><button data-action="month" data-step="-1" aria-label="이전 달">‹ 이전</button><h2 id="month"></h2><button data-action="month" data-step="1" aria-label="다음 달">다음 ›</button></div>
+      <div class="calendar-grid" id="calendar"></div>
+      <p class="row legend"><span class="planned-key">방문 예정</span><span class="stage-visited">✓ 병원 다녀옴</span><span class="stage-claimed">돈 청구함</span><span class="stage-paid">돈 받음</span></p>
+      <div class="date-detail" id="day-detail"></div>
+    </section>
+    <section aria-labelledby="weeks-title"><h2 id="weeks-title">주별 신청과 입금</h2><div id="weeks"></div></section>
+    <p id="save-status" role="status"></p>
+    <noscript>달력을 사용하려면 브라우저에서 JavaScript를 켜 주세요.</noscript>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title"><form id="editor-form"><h2 id="editor-title"></h2><div id="editor-body"></div><div class="row"><button type="button" id="editor-cancel">닫기</button><button class="primary" id="editor-save" type="submit">저장</button></div></form></dialog>
+  <script>
+    'use strict';
+    const byId = id => document.getElementById(id);
+    const storageKey = 'family-clinic-calendar-v1';
+    const costLabels = { medicine:'약값', care:'진료비', pharmacy:'약국비' };
+    const rates = { refund:76614, insurance:100000 };
+    const money = amount => `${amount.toLocaleString('ko-KR')}원`;
+    const dateFormat = new Intl.DateTimeFormat('ko-KR', { month:'long', day:'numeric', weekday:'long' });
+    const monthFormat = new Intl.DateTimeFormat('ko-KR', { year:'numeric', month:'long' });
+    const shortFormat = new Intl.DateTimeFormat('ko-KR', { month:'long', day:'numeric' });
+    const fullDate = new Intl.DateTimeFormat('ko-KR', { year:'numeric', month:'long', day:'numeric' });
+    const dateKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    const fromKey = key => new Date(`${key}T12:00:00`);
+    const today = () => dateKey(new Date());
+    const stepDate = (date, days) => new Date(date.getFullYear(),date.getMonth(),date.getDate()+days,12);
+    const monday = key => dateKey(stepDate(fromKey(key),-((fromKey(key).getDay()+6)%7)));
+    const weekEnd = key => dateKey(stepDate(fromKey(key),6));
+    const ordinal = key => Date.parse(`${key}T00:00:00Z`)/86400000;
+    const totalCost = cost => Object.values(cost).reduce((sum, amount) => sum+amount, 0);
+    const dialog = byId('editor');
+    const form = byId('editor-form');
+    let selectedDay = today();
+    let shownMonth = selectedDay.slice(0,7);
+    let detailMode = '';
+    let submitEditor;
+    let storageWorks = true;
+    const initialCosts = { medicine:192310, care:8600, pharmacy:1600 };
+    const fresh = () => ({ visits:{}, weeks:{}, costHistory:{}, start:{ date:today(), amount:21 }, stockFix:null, bank:null });
+    function readState() {
+      try { return JSON.parse(localStorage.getItem(storageKey)) || fresh(); }
+      catch { storageWorks = false; return fresh(); }
+    }
+    let state = readState();
+    function save() {
+      try { localStorage.setItem(storageKey, JSON.stringify(state)); storageWorks = true; }
+      catch { storageWorks = false; }
+      byId('save-status').textContent = storageWorks ? '이 브라우저에 기록이 저장돼요.' : '이 브라우저에서 저장할 수 없어요. 페이지를 닫으면 지금 기록이 사라질 수 있어요.';
+    }
+    const visitsInWeek = key => Object.keys(state.visits).filter(day => monday(day) === key).length;
+    function defaultCosts(day) {
+      const effective = Object.keys(state.costHistory).filter(date => date <= day).sort().at(-1);
+      return state.costHistory[effective] || initialCosts;
+    }
+    const statusOf = key => state.weeks[key] || {};
+    const editWeek = key => state.weeks[key] ||= {};
+    function weekLabel(key, includeYear = false) {
+      const start = fromKey(key);
+      const end = fromKey(weekEnd(key));
+      if (start.getFullYear() !== end.getFullYear()) return `${fullDate.format(start)}~${fullDate.format(end)}`;
+      const format = includeYear ? fullDate : shortFormat;
+      return `${format.format(start)}~${start.getMonth() === end.getMonth() ? `${end.getDate()}일` : shortFormat.format(end)}`;
+    }
+    function stockAmount() {
+      const anchor = state.stockFix || state.start;
+      const through = today();
+      let amount = anchor.amount;
+      // The starting count precedes the first visit entry. A corrected count covers its full day.
+      if (!state.stockFix && state.visits[anchor.date]) amount += 4;
+      const received = Object.keys(state.visits).filter(day => day > anchor.date && day <= through).sort();
+      let previous = anchor.date;
+      for (const day of received) {
+        amount = Math.max(0, amount - 2 * (ordinal(day)-ordinal(previous)-1));
+        amount = Math.max(0, amount + 4 - 2);
+        previous = day;
+      }
+      return Math.max(0, amount - 2 * Math.max(0, ordinal(through)-ordinal(previous)));
+    }
+    function transactions() {
+      const result = Object.entries(state.visits).map(([date,cost]) => ({ id:`visit:${date}`, date, amount:-totalCost(cost) }));
+      for (const [week, status] of Object.entries(state.weeks)) {
+        for (const [type, rate] of Object.entries(rates)) {
+          const date = status[type];
+          if (date) result.push({ id:`${type}:${week}`, date, amount:visitsInWeek(week)*rate });
+        }
+      }
+      return result;
+    }
+    function bankAmount() {
+      if (!state.bank) return null;
+      const { amount, date, included } = state.bank;
+      return transactions().filter(item => item.date <= today() && (item.date > date || (item.date === date && !included.includes(item.id))))
+        .reduce((balance, item) => balance+item.amount, amount);
+    }
+    function setBank(amount) {
+      const date = today();
+      state.bank = { amount, date, included:transactions().filter(item => item.date === date).map(item => item.id) };
+    }
+    function applyButton(key, field, label, prefix = '') {
+      const completed = statusOf(key)[field];
+      return `<button id="${prefix}${field}-${key}" class="${completed ? 'done' : 'primary'}" data-action="${field}" data-key="${key}" ${!visitsInWeek(key) && !completed ? 'disabled' : ''}>${completed ? '✓ ' : ''}${label}</button>`;
+    }
+    function depositButton(key, type, label = '') {
+      const status = statusOf(key);
+      const received = status[type];
+      const applied = status[type === 'refund' ? 'sent' : 'applied'];
+      const action = received ? '입금일 수정' : '입금 확인';
+      const name = type === 'refund' ? '제약사 환급' : '실비';
+      return `<button class="${received ? 'done' : ''}" data-action="deposit" data-key="${key}" data-type="${type}" aria-label="${name} ${action}" ${received || (applied && visitsInWeek(key)) ? '' : 'disabled'}>${received ? '✓ ' : ''}${label ? `${label} ` : ''}${action}</button>`;
+    }
+    function claimHTML(key, title, type, applyKey, completeLabel) {
+      const status = statusOf(key);
+      const applied = status[applyKey];
+      const received = status[type];
+      const count = visitsInWeek(key);
+      return `<div class="claim"><h3>${title}</h3><p class="muted">예상 입금액 ${type === 'insurance' ? '약 ' : ''}${money(count*rates[type])}</p>
+        <div class="row">${applyButton(key, applyKey, applied && applyKey === 'sent' ? `${completeLabel} 수정` : completeLabel)}${depositButton(key, type)}</div>
+        ${type === 'refund' && applied ? `<p class="claim-date"><small>발송일 ${shortFormat.format(fromKey(applied))}</small></p>` : ''}
+        <p class="claim-date"><small>${received ? `입금일 ${shortFormat.format(fromKey(received))}` : applied ? '입금 대기' : '신청 전'}</small></p></div>`;
+    }
+    function progress(key) {
+      const { sent, applied, refund, insurance } = statusOf(key);
+      const claims = Number(Boolean(sent)) + Number(Boolean(applied));
+      const payments = Number(Boolean(refund)) + Number(Boolean(insurance));
+      return { claims, payments, stage:payments ? 'paid' : claims ? 'claimed' : 'visited' };
+    }
+    function praise(claims) {
+      if (!claims) return '';
+      return `<p class="praise">${claims === 2 ? '우편 발송과 실비 신청을 모두 챙기셨어요. 정말 수고 많으셨어요.' : '오늘도 하나씩 챙기느라 수고 많으셨어요.'}</p>`;
+    }
+    function dayDetail() {
+      const visit = state.visits[selectedDay];
+      const week = monday(selectedDay);
+      const { claims, payments, stage } = progress(week);
+      const { sent } = statusOf(week);
+      const group = detailMode && visit ? `<div id="day-stage-options" class="day-stage-options">
+        <small>${weekLabel(week)} 방문 건 · 청구 ${claims}/2 · 입금 ${payments}/2</small>
+        <div class="row">${detailMode === 'claimed'
+          ? applyButton(week, 'sent', sent ? '제약사 발송일 수정' : '제약사 발송 완료', 'day-') + applyButton(week, 'applied', '실비 신청 완료', 'day-')
+          : depositButton(week, 'refund', '제약사') + depositButton(week, 'insurance', '실비')}</div>
+        ${detailMode === 'claimed' ? praise(claims) : ''}
+        ${detailMode === 'paid' && claims < 2 ? '<small>우편을 보냈거나 실비를 신청한 항목의 입금을 확인할 수 있어요.</small>' : ''}
+      </div>` : '';
+      return `<h3>${dateFormat.format(fromKey(selectedDay))}</h3><div class="stage-actions" role="group" aria-label="방문과 신청 상태">
+        <button class="stage-visited ${visit && stage === 'visited' ? 'current-stage' : ''}" data-action="visit" aria-pressed="${Boolean(visit)}" ${selectedDay > today() ? 'disabled' : ''}>${visit ? '✓ ' : ''}병원 다녀옴</button>
+        <button class="stage-claimed ${visit && stage === 'claimed' ? 'current-stage' : ''}" data-action="calendar-stage" data-type="claimed" aria-expanded="${detailMode === 'claimed' && Boolean(visit)}" ${visit ? '' : 'disabled'}>돈 청구함</button>
+        <button class="stage-paid ${visit && stage === 'paid' ? 'current-stage' : ''}" data-action="calendar-stage" data-type="paid" aria-expanded="${detailMode === 'paid' && Boolean(visit)}" ${visit ? '' : 'disabled'}>돈 받음</button></div>
+        ${group}${visit ? `<div class="row"><small>방문 비용 ${money(totalCost(visit))}</small><button data-action="cost-day">이날 비용 수정</button></div>` : selectedDay > today() ? '<small>방문 후에 체크할 수 있어요.</small>' : ''}`;
+    }
+    function render() {
+      byId('today').textContent = dateFormat.format(fromKey(today()));
+      const outstanding = Array.from(new Set(Object.keys(state.visits).map(monday))).filter(key => !statusOf(key).sent).sort();
+      byId('mail-list').innerHTML = outstanding.length ? outstanding.map(key => `<button data-action="mail-jump" data-key="${key}"><span>${weekLabel(key, key.slice(0,4) !== today().slice(0,4))} <small>방문 ${visitsInWeek(key)}회</small></span><b aria-hidden="true">보기 ›</b></button>`).join('') : '<p class="muted">아직 발송이 남은 주가 없어요.</p>';
+      const stock = stockAmount();
+      byId('stock').textContent = `${stock}알`;
+      byId('stock-note').textContent = stock === 0 ? '예상 재고가 0알이에요. 실제 수량을 확인해 주세요.' : '예상 재고 · 방문 +4알, 하루 −2알';
+      byId('stock-note').classList.toggle('warning', stock === 0);
+      const balance = bankAmount();
+      byId('bank').textContent = balance === null ? '잔고를 입력해 주세요' : money(balance);
+      byId('bank').classList.toggle('small', balance === null);
+      byId('bank-button').textContent = balance === null ? '시작 잔고 입력' : '실제 잔고 비교';
+      byId('bank-note').textContent = balance === null ? '직접 확인한 잔고에서 계산을 시작해요.' : `${shortFormat.format(fromKey(state.bank.date))} 잔고 기준 · 방문 비용과 확인한 입금 반영`;
+      const start = fromKey(`${shownMonth}-01`);
+      byId('month').textContent = monthFormat.format(start);
+      let key = monday(dateKey(start));
+      const last = dateKey(new Date(start.getFullYear(),start.getMonth()+1,0,12));
+      const headers = [...'월화수목금토일'].map(day => `<span class="weekday">${day}</span>`);
+      const dates = [];
+      const weeks = [];
+      while (key <= last) {
+        weeks.push(key);
+        const { claims, payments, stage } = progress(key);
+        for (let offset = 0; offset < 7; offset++) {
+          const date = stepDate(fromKey(key),offset);
+          const day = dateKey(date);
+          const visited = Boolean(state.visits[day]);
+          const planned = offset >= 1 && offset <= 4 && day.startsWith(shownMonth);
+          const classes = ['day', day.startsWith(shownMonth) ? '' : 'outside', visited ? `stage-${stage}` : planned ? 'planned' : ''];
+          const marker = stage === 'paid' ? `입금${payments === 1 ? ' 1' : ''}` : stage === 'claimed' ? `청구${claims === 1 ? ' 1' : ''}` : '✓';
+          const description = visited ? ` 병원 다녀옴${claims ? `, 청구 ${claims}건` : ''}${payments ? `, 입금 ${payments}건` : ''}` : planned ? ' 방문 예정 요일' : '';
+          dates.push(`<button class="${classes.join(' ')}" data-action="day" data-key="${day}" ${visited ? `data-marker="${marker}"` : ''} aria-pressed="${day === selectedDay}" ${day === today() ? 'aria-current="date"' : ''} aria-label="${dateFormat.format(date)}${description}">${date.getDate()}</button>`);
+        }
+        key = dateKey(stepDate(fromKey(key),7));
+      }
+      byId('calendar').innerHTML = headers.concat(dates).join('');
+      byId('day-detail').innerHTML = dayDetail();
+      byId('weeks').innerHTML = weeks.filter(week => week === monday(selectedDay) || visitsInWeek(week) || Object.keys(statusOf(week)).length).map(week => {
+        return `<article class="week" id="week-${week}"><div class="week-title"><h3>${weekLabel(week)}</h3><small>방문 ${visitsInWeek(week)}회</small></div>
+          ${claimHTML(week, '제약사 환급 우편', 'refund', 'sent', '발송 완료')}
+          ${claimHTML(week, '실비', 'insurance', 'applied', '신청 완료')}
+          ${praise(progress(week).claims)}</article>`;
+      }).join('');
+    }
+    function openEditor(title, body, saveLabel, onSave) {
+      byId('editor-title').textContent = title;
+      byId('editor-body').innerHTML = body;
+      byId('editor-save').textContent = saveLabel;
+      byId('editor-save').hidden = false;
+      submitEditor = onSave;
+      dialog.showModal();
+    }
+    const numberField = (label, name, amount = '', min = 0) => `<label>${label}<input name="${name}" type="number" inputmode="numeric" min="${min}" max="999999999999" step="1" value="${amount}" required></label>`;
+    const readAmount = (data, name) => Number(data.get(name));
+    const dateField = (label, date) => `<label>${label}<input type="date" name="date" value="${date}" max="${today()}" required></label>`;
+    const cancelRecord = label => `<button type="button" class="text-button" data-action="undo">${label}</button>`;
+    let undoRecord;
+    function commit() { save(); render(); }
+    function editDate(key, field, title, label, intro = '', buttonId = '') {
+      const existing = statusOf(key)[field];
+      if (!existing && field === 'sent') { editWeek(key)[field] = today(); commit(); byId(buttonId).focus(); return; }
+      openEditor(title, `${intro}${dateField(label, existing || today())}${existing ? cancelRecord('완료 체크 취소') : ''}`, existing ? '날짜 저장' : '확인 완료', data => { editWeek(key)[field] = data.get('date'); });
+      undoRecord = () => { delete editWeek(key)[field]; };
+    }
+    function editCosts(day) {
+      const costs = day ? state.visits[day] : defaultCosts(today());
+      const fields = Object.entries(costLabels).map(([key,label]) => numberField(label+' (원)',key,costs[key])).join('');
+      const note = day ? `${dateFormat.format(fromKey(day))}에 적용돼요.` : '오늘부터 새로 기록하는 방문에 적용돼요. 기존 방문 비용은 그대로예요.';
+      openEditor(day ? '이날 방문 비용' : '방문 기본 비용', `<p>${note}</p>${fields}`, '비용 저장', data => {
+        const updated = Object.fromEntries(Object.keys(costLabels).map(key => [key,readAmount(data,key)]));
+        if (day) state.visits[day] = updated;
+        else state.costHistory[today()] = updated;
+      });
+    }
+    function editBank() {
+      const balance = bankAmount();
+      if (balance === null) {
+        openEditor('시작 잔고 입력', `<p>오늘 통장에서 확인한 잔고를 적어 주세요.</p>${numberField('시작 잔고 (원)','balance')}`, '저장', data => setBank(readAmount(data,'balance')));
+        return;
+      }
+      openEditor('실제 잔고 비교', `<p>예상 잔고 <strong>${money(balance)}</strong></p>${numberField('통장에서 확인한 실제 잔고 (원)','balance')}<output id="difference" aria-live="polite"></output>`, '이 잔고로 수정', data => setBank(readAmount(data,'balance')));
+      form.elements.balance.addEventListener('input', event => {
+        const input = event.target;
+        const difference = input.valueAsNumber-balance;
+        byId('difference').textContent = !input.validity.valid ? '' : difference === 0 ? '예상 잔고와 같아요.' : `실제 잔고가 예상보다 ${money(Math.abs(difference))} ${difference > 0 ? '많아요.' : '적어요.'}`;
+      });
+    }
+    byId('editor-cancel').addEventListener('click', () => dialog.close());
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      submitEditor(new FormData(form));
+      dialog.close();
+      commit();
+    });
+    dialog.addEventListener('click', event => {
+      if (!event.target.closest('[data-action="undo"]')) return;
+      undoRecord();
+      dialog.close();
+      commit();
+    });
+    document.querySelector('main').addEventListener('click', event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      const {action,key,type,step} = button.dataset;
+      switch (action) {
+        case 'month': {
+          const month = fromKey(`${shownMonth}-01`);
+          const destination = dateKey(new Date(month.getFullYear(),month.getMonth()+Number(step),1,12));
+          shownMonth = destination.slice(0,7);
+          selectedDay = today().startsWith(shownMonth) ? today() : destination;
+          detailMode = '';
+          render();
+          break;
+        }
+        case 'day':
+          selectedDay = key;
+          shownMonth = key.slice(0,7);
+          detailMode = '';
+          render();
+          byId('day-detail').scrollIntoView({ block:'nearest' });
+          byId('day-detail').querySelector('button').focus({ preventScroll:true });
+          break;
+        case 'visit':
+          if (selectedDay > today()) break;
+          if (state.visits[selectedDay]) {
+            delete state.visits[selectedDay];
+            detailMode = '';
+          } else state.visits[selectedDay] = { ...defaultCosts(selectedDay) };
+          commit();
+          byId('day-detail').querySelector('button').focus();
+          break;
+        case 'calendar-stage':
+          detailMode = detailMode === type ? '' : type;
+          byId('day-detail').innerHTML = dayDetail();
+          byId('day-detail').querySelector(`[data-type="${type}"]`).focus({ preventScroll:true });
+          if (detailMode) byId('day-stage-options').scrollIntoView({ block:'nearest' });
+          break;
+        case 'mail-jump': {
+          const firstVisit = Object.keys(state.visits).filter(day => monday(day) === key).sort()[0];
+          selectedDay = firstVisit;
+          shownMonth = firstVisit.slice(0,7);
+          detailMode = '';
+          render();
+          const target = byId(`sent-${key}`);
+          target.focus({ preventScroll:true });
+          target.scrollIntoView({ block:'center' });
+          break;
+        }
+        case 'sent': editDate(key, 'sent', '환급 우편 발송일', '실제 발송일', '', button.id); break;
+        case 'applied':
+          if (statusOf(key).applied) delete editWeek(key).applied;
+          else editWeek(key).applied = true;
+          commit();
+          byId(button.id).focus();
+          break;
+        case 'deposit': {
+          const title = type === 'refund' ? '제약사 환급 입금' : '실비 입금';
+          const intro = statusOf(key)[type] ? '' : `<p>이번 주 예상액은 <strong>${type === 'insurance' ? '약 ' : ''}${money(visitsInWeek(key)*rates[type])}</strong>이에요. 이 정도 들어왔나요?</p>`;
+          editDate(key, type, title, '입금일', intro);
+          break;
+        }
+        case 'stock-start': {
+          const note = state.stockFix ? '재고 수정 이후의 계산은 마지막으로 수정한 수량을 기준으로 해요.' : '처음 약을 셌을 때의 수량이에요.';
+          openEditor('약 시작 수량', `<p>${note}</p>${numberField('시작 수량 (알)','amount',state.start.amount)}`, '시작 수량 저장', data => {
+            state.start.amount = readAmount(data,'amount');
+          });
+          break;
+        }
+        case 'stock-edit':
+          openEditor('지금 실제로 남은 약', `<p>오늘 센 수량을 적어 주세요. 내일부터 자동 차감해요.</p>${numberField('현재 수량 (알)','amount',stockAmount())}`, '재고 수정', data => {
+            state.stockFix = { date:today(), amount:readAmount(data,'amount') };
+          });
+          break;
+        case 'bank': editBank(); break;
+        case 'cost-default': editCosts(); break;
+        case 'cost-day': editCosts(selectedDay); break;
+      }
+    });
+    let lastRenderedDay = today();
+    function refreshDate() {
+      const day = today();
+      if (day === lastRenderedDay) return;
+      lastRenderedDay = day;
+      render();
+    }
+    document.addEventListener('visibilitychange', refreshDate);
+    setInterval(refreshDate, 30000);
+    window.addEventListener('storage', event => {
+      if (event.key === storageKey) { state = readState(); render(); }
+    });
+    render();
+    save();
+  </script>
+</body>
+</html>
