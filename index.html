@@ -81,6 +81,10 @@
     input { width:100%; min-width:0; min-height:46px; padding:7px 9px; border:1px solid #bba79a; border-radius:8px; color:var(--ink); background:white; }
     dialog .row { justify-content:flex-end; margin-top:13px; }
     output { display:block; }
+    .weekday-pick { display:flex; flex-wrap:wrap; gap:6px; border:0; padding:0; margin:10px 0; }
+    .weekday-pick legend { font-weight:650; margin-bottom:4px; }
+    .weekday-pick label { display:flex; align-items:center; gap:4px; margin:0; border:1px solid var(--line); border-radius:10px; padding:6px 9px; }
+    dialog h3 { margin:16px 0 0; font-size:1rem; color:var(--plum); }
     .verdict { border-radius:12px; padding:10px 12px; font-weight:800; font-size:1.1rem; margin:8px 0; }
     .verdict.ok { background:var(--mint); color:var(--green); }
     .verdict.short { background:#fde2d8; color:#9a3412; }
@@ -94,7 +98,7 @@
 </head>
 <body>
   <main>
-    <header><div><h1>엄마의 병원 달력</h1><p class="today" id="today"></p></div><span class="heart" aria-hidden="true">♥</span></header>
+    <header><div><h1>엄마의 병원 달력</h1><p class="today" id="today"></p></div><button class="text-button" data-action="settings">⚙ 설정</button></header>
     <section class="panel mail" aria-labelledby="mail-title">
       <h2 id="mail-title">아직 안 보낸 환급 우편</h2>
       <div id="mail-list" class="mail-list"></div>
@@ -130,7 +134,6 @@
     const byId = id => document.getElementById(id);
     const storageKey = 'family-clinic-calendar-v1';
     const costLabels = { medicine:'약값', pharmacy:'약국비' };
-    const rates = { refund:76614, insurance:100000 };
     const money = amount => `${amount.toLocaleString('ko-KR')}원`;
     const dateFormat = new Intl.DateTimeFormat('ko-KR', { month:'long', day:'numeric', weekday:'long' });
     const monthFormat = new Intl.DateTimeFormat('ko-KR', { year:'numeric', month:'long' });
@@ -152,8 +155,11 @@
     let detailMode = '';
     let submitEditor;
     let storageWorks = true;
-    const initialCosts = { medicine:192310, pharmacy:1600 };
-    const fresh = () => ({ visits:{}, weeks:{}, costHistory:{}, start:{ date:today(), amount:21 }, stockFix:null, bank:null });
+    // 사람마다 다른 값. 처음 설정 화면에서 입력받고, 기본값은 처음 만든 사용자(엄마)의 값
+    const DEFAULTS = { medicine:192310, pharmacy:1600, refund:76614, insurance:100000, perDay:2, days:2, startPills:21, weekdays:[1,2,3,4] };
+    const cfg = () => ({ ...DEFAULTS, ...state.settings });
+    const pillsPerVisit = () => cfg().perDay*cfg().days;
+    const fresh = () => ({ visits:{}, weeks:{}, costHistory:{}, start:{ date:today(), amount:DEFAULTS.startPills }, stockFix:null, bank:null });
     function readState() {
       try { return JSON.parse(localStorage.getItem(storageKey)) || fresh(); }
       catch { storageWorks = false; return fresh(); }
@@ -167,7 +173,7 @@
     const visitsInWeek = key => Object.keys(state.visits).filter(day => monday(day) === key).length;
     function defaultCosts(day) {
       const effective = Object.keys(state.costHistory).filter(date => date <= day).sort().at(-1);
-      return state.costHistory[effective] || initialCosts;
+      return state.costHistory[effective] || { medicine:cfg().medicine, pharmacy:cfg().pharmacy };
     }
     const statusOf = key => state.weeks[key] || {};
     const editWeek = key => state.weeks[key] ||= {};
@@ -181,22 +187,23 @@
     function stockAmount() {
       const anchor = state.stockFix || state.start;
       const through = today();
+      const perDay = cfg().perDay;
       let amount = anchor.amount;
       // The starting count precedes the first visit entry. A corrected count covers its full day.
-      if (!state.stockFix && state.visits[anchor.date]) amount += 4;
+      if (!state.stockFix && state.visits[anchor.date]) amount += pillsPerVisit();
       const received = Object.keys(state.visits).filter(day => day > anchor.date && day <= through).sort();
       let previous = anchor.date;
       for (const day of received) {
-        amount = Math.max(0, amount - 2 * (ordinal(day)-ordinal(previous)-1));
-        amount = Math.max(0, amount + 4 - 2);
+        amount = Math.max(0, amount - perDay * (ordinal(day)-ordinal(previous)-1));
+        amount = Math.max(0, amount + pillsPerVisit() - perDay);
         previous = day;
       }
-      return Math.max(0, amount - 2 * Math.max(0, ordinal(through)-ordinal(previous)));
+      return Math.max(0, amount - perDay * Math.max(0, ordinal(through)-ordinal(previous)));
     }
     function transactions() {
       const result = Object.entries(state.visits).map(([date,cost]) => ({ id:`visit:${date}`, date, amount:-totalCost(cost) }));
       for (const [week, status] of Object.entries(state.weeks)) {
-        for (const [type, rate] of Object.entries(rates)) {
+        for (const type of ['refund','insurance']) {
           const date = status[type];
           if (date) result.push({ id:`${type}:${week}`, date, amount:receivedAmount(week, type) });
         }
@@ -204,7 +211,7 @@
       return result;
     }
     // 캡처로 확인한 실제 입금액이 있으면 그 금액, 없으면 예상액
-    const receivedAmount = (week, type) => statusOf(week)[`${type}Amount`] ?? visitsInWeek(week)*rates[type];
+    const receivedAmount = (week, type) => statusOf(week)[`${type}Amount`] ?? visitsInWeek(week)*cfg()[type];
     function monthlyNet() {
       const months = {};
       for (const week of Object.keys(state.weeks)) {
@@ -259,7 +266,7 @@
       const applied = status[applyKey];
       const received = status[type];
       const count = visitsInWeek(key);
-      return `<div class="claim"><h3>${title}</h3><p class="muted">예상 입금액 ${type === 'insurance' ? '약 ' : ''}${money(count*rates[type])}</p>
+      return `<div class="claim"><h3>${title}</h3><p class="muted">예상 입금액 ${type === 'insurance' ? '약 ' : ''}${money(count*cfg()[type])}</p>
         <div class="row">${applyButton(key, applyKey, applied && applyKey === 'sent' ? `${completeLabel} 수정` : completeLabel)}${depositButton(key, type)}</div>
         ${type === 'refund' && applied ? `<p class="claim-date"><small>발송일 ${shortFormat.format(fromKey(applied))}</small></p>` : ''}
         <p class="claim-date"><small>${received ? `입금일 ${shortFormat.format(fromKey(received))} · ${money(receivedAmount(key,type))}` : applied ? '입금 대기' : '신청 전'}</small></p></div>`;
@@ -299,7 +306,7 @@
       byId('mail-list').innerHTML = outstanding.length ? outstanding.map(key => `<button data-action="mail-jump" data-key="${key}"><span>${weekLabel(key, key.slice(0,4) !== today().slice(0,4))} <small>방문 ${visitsInWeek(key)}회</small></span><b aria-hidden="true">보기 ›</b></button>`).join('') : '<p class="muted">아직 발송이 남은 주가 없어요.</p>';
       const stock = stockAmount();
       byId('stock').textContent = `${stock}알`;
-      byId('stock-note').textContent = stock === 0 ? '예상 재고가 0알이에요. 실제 수량을 확인해 주세요.' : '예상 재고 · 방문 +4알, 하루 −2알';
+      byId('stock-note').textContent = stock === 0 ? '예상 재고가 0알이에요. 실제 수량을 확인해 주세요.' : `예상 재고 · 방문 +${pillsPerVisit()}알, 하루 −${cfg().perDay}알`;
       byId('stock-note').classList.toggle('warning', stock === 0);
       const balance = bankAmount();
       byId('bank').textContent = balance === null ? '잔고를 입력해 주세요' : money(balance);
@@ -320,7 +327,7 @@
           const date = stepDate(fromKey(key),offset);
           const day = dateKey(date);
           const visited = Boolean(state.visits[day]);
-          const planned = offset >= 1 && offset <= 4 && day.startsWith(shownMonth);
+          const planned = cfg().weekdays.includes(offset) && day.startsWith(shownMonth);
           const classes = ['day', day.startsWith(shownMonth) ? '' : 'outside', visited ? `stage-${stage}` : planned ? 'planned' : ''];
           const marker = stage === 'paid' ? `입금${payments === 1 ? ' 1' : ''}` : stage === 'claimed' ? `청구${claims === 1 ? ' 1' : ''}` : '✓';
           const description = visited ? ` 병원 다녀옴${claims ? `, 청구 ${claims}건` : ''}${payments ? `, 입금 ${payments}건` : ''}` : planned ? ' 방문 예정 요일' : '';
@@ -343,6 +350,7 @@
       byId('editor-body').innerHTML = body;
       byId('editor-save').textContent = saveLabel;
       byId('editor-save').hidden = false;
+      byId('editor-cancel').hidden = false;
       submitEditor = onSave;
       dialog.showModal();
     }
@@ -386,7 +394,7 @@
     function editDeposit(key, type) {
       const status = statusOf(key);
       const existing = status[type];
-      const expected = visitsInWeek(key)*rates[type];
+      const expected = visitsInWeek(key)*cfg()[type];
       const name = type === 'refund' ? '제약사 환급' : '실비';
       openEditor(`${name} 입금`, `<p>이번 주 예상액은 <strong>${type === 'insurance' ? '약 ' : ''}${money(expected)}</strong>이에요.</p>
         <label>은행 입금 문자 캡처 올리기<input type="file" name="shot" accept="image/*"></label>
@@ -419,6 +427,27 @@
           result.innerHTML = '<p class="verdict wait">캡처를 읽지 못했어요. 인터넷 연결을 확인하거나 금액을 직접 적어 주세요.</p>';
         }
       });
+    }
+    function editSettings(first = false) {
+      const c = cfg();
+      const days = [...'월화수목금토일'].map((name, i) => `<label><input type="checkbox" name="weekday" value="${i}" ${c.weekdays.includes(i) ? 'checked' : ''}>${name}</label>`).join('');
+      openEditor(first ? '처음 설정' : '설정', `${first ? '<p>내 상황에 맞게 숫자를 고쳐 주세요. 나중에 ⚙ 설정에서 언제든 바꿀 수 있어요.</p>' : ''}
+        <h3>병원 가는 날</h3><fieldset class="weekday-pick"><legend>보통 병원 가는 요일 (달력에 표시)</legend>${days}</fieldset>
+        <h3>한 번 방문할 때 내는 돈</h3>${numberField('약값 (원)','medicine',c.medicine)}${numberField('약국비 (원)','pharmacy',c.pharmacy)}
+        <h3>한 번 방문할 때 돌려받는 돈</h3>${numberField('제약사 환급 (원)','refund',c.refund)}${numberField('실비 (대략, 원)','insurance',c.insurance)}
+        <h3>약</h3>${numberField('하루에 먹는 약 (알)','perDay',c.perDay)}${numberField('한 번에 받아오는 약 (며칠치)','days',c.days)}
+        ${first ? numberField('지금 남은 약 (알)','startPills',state.start.amount) : ''}
+        <output id="pills-note"></output>${first ? '' : '<p class="muted">비용을 바꾸면 오늘부터 새로 체크하는 방문에 적용되고, 이미 기록한 방문 비용은 그대로예요.</p>'}`, '설정 저장', data => {
+        const settings = Object.fromEntries(['medicine','pharmacy','refund','insurance','perDay','days'].map(key => [key, readAmount(data,key)]));
+        settings.weekdays = data.getAll('weekday').map(Number);
+        const changedCost = settings.medicine !== c.medicine || settings.pharmacy !== c.pharmacy;
+        state.settings = settings;
+        if (first) state.start = { date:today(), amount:readAmount(data,'startPills') };
+        else if (changedCost) state.costHistory[today()] = { medicine:settings.medicine, pharmacy:settings.pharmacy };
+      });
+      const note = () => { byId('pills-note').textContent = `병원 다녀올 때마다 약 ${form.elements.perDay.valueAsNumber*form.elements.days.valueAsNumber || 0}알이 늘어요.`; };
+      form.elements.perDay.addEventListener('input', note); form.elements.days.addEventListener('input', note); note();
+      if (first) byId('editor-cancel').hidden = true;
     }
     function editCosts(day) {
       const costs = day ? state.visits[day] : defaultCosts(today());
@@ -528,6 +557,7 @@
           });
           break;
         case 'bank': editBank(); break;
+        case 'settings': editSettings(); break;
         case 'cost-default': editCosts(); break;
         case 'cost-day': editCosts(selectedDay); break;
       }
@@ -546,6 +576,8 @@
     });
     render();
     save();
+    // 처음 쓰는 사람에게 설정 화면. 이미 기록이 있으면(기존 사용자) 기본값 그대로 사용
+    if (!state.settings && !Object.keys(state.visits).length && !state.bank) editSettings(true);
   </script>
 </body>
 </html>
