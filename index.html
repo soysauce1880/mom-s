@@ -81,6 +81,13 @@
     input { width:100%; min-width:0; min-height:46px; padding:7px 9px; border:1px solid #bba79a; border-radius:8px; color:var(--ink); background:white; }
     dialog .row { justify-content:flex-end; margin-top:13px; }
     output { display:block; }
+    .verdict { border-radius:12px; padding:10px 12px; font-weight:800; font-size:1.1rem; margin:8px 0; }
+    .verdict.ok { background:var(--mint); color:var(--green); }
+    .verdict.short { background:#fde2d8; color:#9a3412; }
+    .verdict.wait { background:var(--peach); color:var(--muted); font-weight:650; font-size:1rem; }
+    .month-list { display:grid; gap:9px; }
+    .month-list .measure { margin:2px 0; }
+    .warning { color:#9a3412; font-weight:700; }
     [hidden] { display:none !important; }
     @media (max-width:360px) { main { width:calc(100% - 20px); } .panel,.week { padding:11px; } .calendar-nav button { padding-inline:6px; } }
   </style>
@@ -113,6 +120,7 @@
       <div class="date-detail" id="day-detail"></div>
     </section>
     <section aria-labelledby="weeks-title"><h2 id="weeks-title">주별 신청과 입금</h2><div id="weeks"></div></section>
+    <section class="panel" aria-labelledby="net-title"><h2 id="net-title">월별 실제로 낸 돈</h2><div id="monthly"></div></section>
     <p id="save-status" role="status"></p>
     <noscript>달력을 사용하려면 브라우저에서 JavaScript를 켜 주세요.</noscript>
   </main>
@@ -121,7 +129,7 @@
     'use strict';
     const byId = id => document.getElementById(id);
     const storageKey = 'family-clinic-calendar-v1';
-    const costLabels = { medicine:'약값', care:'진료비', pharmacy:'약국비' };
+    const costLabels = { medicine:'약값', pharmacy:'약국비' };
     const rates = { refund:76614, insurance:100000 };
     const money = amount => `${amount.toLocaleString('ko-KR')}원`;
     const dateFormat = new Intl.DateTimeFormat('ko-KR', { month:'long', day:'numeric', weekday:'long' });
@@ -135,7 +143,8 @@
     const monday = key => dateKey(stepDate(fromKey(key),-((fromKey(key).getDay()+6)%7)));
     const weekEnd = key => dateKey(stepDate(fromKey(key),6));
     const ordinal = key => Date.parse(`${key}T00:00:00Z`)/86400000;
-    const totalCost = cost => Object.values(cost).reduce((sum, amount) => sum+amount, 0);
+    // 진료비는 이 통장에서 나가지 않아 계산에서 뺍니다. 예전에 저장된 진료비(care)도 무시합니다.
+    const totalCost = cost => Object.keys(costLabels).reduce((sum, key) => sum+(cost[key]||0), 0);
     const dialog = byId('editor');
     const form = byId('editor-form');
     let selectedDay = today();
@@ -143,7 +152,7 @@
     let detailMode = '';
     let submitEditor;
     let storageWorks = true;
-    const initialCosts = { medicine:192310, care:8600, pharmacy:1600 };
+    const initialCosts = { medicine:192310, pharmacy:1600 };
     const fresh = () => ({ visits:{}, weeks:{}, costHistory:{}, start:{ date:today(), amount:21 }, stockFix:null, bank:null });
     function readState() {
       try { return JSON.parse(localStorage.getItem(storageKey)) || fresh(); }
@@ -189,10 +198,39 @@
       for (const [week, status] of Object.entries(state.weeks)) {
         for (const [type, rate] of Object.entries(rates)) {
           const date = status[type];
-          if (date) result.push({ id:`${type}:${week}`, date, amount:visitsInWeek(week)*rate });
+          if (date) result.push({ id:`${type}:${week}`, date, amount:receivedAmount(week, type) });
         }
       }
       return result;
+    }
+    // 캡처로 확인한 실제 입금액이 있으면 그 금액, 없으면 예상액
+    const receivedAmount = (week, type) => statusOf(week)[`${type}Amount`] ?? visitsInWeek(week)*rates[type];
+    function monthlyNet() {
+      const months = {};
+      for (const week of Object.keys(state.weeks)) {
+        const status = statusOf(week);
+        const days = Object.keys(state.visits).filter(day => monday(day) === week);
+        if (!status.refund || !status.insurance || !days.length) continue;
+        const back = receivedAmount(week,'refund') + receivedAmount(week,'insurance');
+        days.forEach((day, i) => {
+          const share = Math.round(back*(i+1)/days.length) - Math.round(back*i/days.length);
+          const m = months[day.slice(0,7)] ||= { paid:0, back:0, visits:0 };
+          m.paid += totalCost(state.visits[day]); m.back += share; m.visits += 1;
+        });
+      }
+      return months;
+    }
+    function monthlyHTML() {
+      const months = monthlyNet();
+      const keys = Object.keys(months).sort().reverse();
+      const pending = Array.from(new Set(Object.keys(state.visits).map(monday))).filter(week => !statusOf(week).refund || !statusOf(week).insurance).length;
+      const note = pending ? `<p class="muted">아직 돈을 다 돌려받지 않은 ${pending}주는 빼고 계산했어요. 진료비는 따로 내셔서 넣지 않았어요.</p>` : '<p class="muted">진료비는 따로 내셔서 넣지 않았어요.</p>';
+      if (!keys.length) return `<p class="muted">제약사 환급과 실비를 모두 받은 주가 생기면 여기에 보여요.</p>${note}`;
+      return `<div class="month-list">${keys.map(key => {
+        const { paid, back, visits } = months[key];
+        return `<article class="week"><div class="week-title"><h3>${monthFormat.format(fromKey(`${key}-01`))}</h3><small>정산 끝난 방문 ${visits}회</small></div>
+          <p class="measure">${money(paid-back)}</p><small>병원비·약값 ${money(paid)} − 돌려받은 돈 ${money(back)}</small></article>`;
+      }).join('')}</div>${note}`;
     }
     function bankAmount() {
       if (!state.bank) return null;
@@ -224,7 +262,7 @@
       return `<div class="claim"><h3>${title}</h3><p class="muted">예상 입금액 ${type === 'insurance' ? '약 ' : ''}${money(count*rates[type])}</p>
         <div class="row">${applyButton(key, applyKey, applied && applyKey === 'sent' ? `${completeLabel} 수정` : completeLabel)}${depositButton(key, type)}</div>
         ${type === 'refund' && applied ? `<p class="claim-date"><small>발송일 ${shortFormat.format(fromKey(applied))}</small></p>` : ''}
-        <p class="claim-date"><small>${received ? `입금일 ${shortFormat.format(fromKey(received))}` : applied ? '입금 대기' : '신청 전'}</small></p></div>`;
+        <p class="claim-date"><small>${received ? `입금일 ${shortFormat.format(fromKey(received))} · ${money(receivedAmount(key,type))}` : applied ? '입금 대기' : '신청 전'}</small></p></div>`;
     }
     function progress(key) {
       const { sent, applied, refund, insurance } = statusOf(key);
@@ -292,6 +330,7 @@
       }
       byId('calendar').innerHTML = headers.concat(dates).join('');
       byId('day-detail').innerHTML = dayDetail();
+      byId('monthly').innerHTML = monthlyHTML();
       byId('weeks').innerHTML = weeks.filter(week => week === monday(selectedDay) || visitsInWeek(week) || Object.keys(statusOf(week)).length).map(week => {
         return `<article class="week" id="week-${week}"><div class="week-title"><h3>${weekLabel(week)}</h3><small>방문 ${visitsInWeek(week)}회</small></div>
           ${claimHTML(week, '제약사 환급 우편', 'refund', 'sent', '발송 완료')}
@@ -318,6 +357,68 @@
       if (!existing && field === 'sent') { editWeek(key)[field] = today(); commit(); byId(buttonId).focus(); return; }
       openEditor(title, `${intro}${dateField(label, existing || today())}${existing ? cancelRecord('완료 체크 취소') : ''}`, existing ? '날짜 저장' : '확인 완료', data => { editWeek(key)[field] = data.get('date'); });
       undoRecord = () => { delete editWeek(key)[field]; };
+    }
+    // 은행 문자 캡처에서 입금액 읽기 (무료 글자 인식 Tesseract.js, 인터넷 필요)
+    let ocrLoading;
+    function loadOcr() {
+      return ocrLoading ||= new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        script.onload = () => resolve(window.Tesseract);
+        script.onerror = () => { ocrLoading = null; reject(new Error('load')); };
+        document.head.append(script);
+      });
+    }
+    function depositsIn(text) {
+      const found = [];
+      for (const m of text.matchAll(/입\s*금\s*:?\s*([0-9][0-9,.\s]{2,12}[0-9])/g)) {
+        const amount = Number(m[1].replace(/[^0-9]/g,''));
+        if (amount >= 1000) found.push(amount);
+      }
+      return found;
+    }
+    function verdictHTML(amount, expected) {
+      const diff = amount-expected;
+      if (diff === 0) return '<p class="verdict ok">다 들어왔어요! 🎉</p>';
+      if (diff > 0) return `<p class="verdict ok">다 들어왔어요! 예상보다 ${money(diff)} 더 들어왔어요.</p>`;
+      return `<p class="verdict short">덜 들어왔어요! ${money(-diff)} 부족해요.</p>`;
+    }
+    function editDeposit(key, type) {
+      const status = statusOf(key);
+      const existing = status[type];
+      const expected = visitsInWeek(key)*rates[type];
+      const name = type === 'refund' ? '제약사 환급' : '실비';
+      openEditor(`${name} 입금`, `<p>이번 주 예상액은 <strong>${type === 'insurance' ? '약 ' : ''}${money(expected)}</strong>이에요.</p>
+        <label>은행 입금 문자 캡처 올리기<input type="file" name="shot" accept="image/*"></label>
+        <output id="shot-result" aria-live="polite">${existing ? verdictHTML(receivedAmount(key,type), expected) : '<p class="muted">캡처를 올리면 금액이 맞는지 알려드려요.</p>'}</output>
+        ${numberField('들어온 금액 (원)','amount',existing ? receivedAmount(key,type) : '')}
+        ${dateField('입금일', existing || today())}${existing ? cancelRecord('입금 확인 취소') : ''}`, existing ? '저장' : '입금 확인 완료', data => {
+        const week = editWeek(key);
+        week[type] = data.get('date');
+        week[`${type}Amount`] = readAmount(data,'amount');
+      });
+      undoRecord = () => { delete editWeek(key)[type]; delete editWeek(key)[`${type}Amount`]; };
+      const amountInput = form.elements.amount;
+      const result = byId('shot-result');
+      amountInput.addEventListener('input', () => {
+        if (amountInput.validity.valid && amountInput.value) result.innerHTML = verdictHTML(amountInput.valueAsNumber, expected);
+      });
+      form.elements.shot.addEventListener('change', async event => {
+        const file = event.target.files[0];
+        if (!file) return;
+        result.innerHTML = '<p class="verdict wait">캡처를 읽고 있어요… 처음엔 30초쯤 걸려요.</p>';
+        try {
+          const Tesseract = await loadOcr();
+          const { data } = await Tesseract.recognize(file, 'kor+eng');
+          const found = depositsIn(data.text);
+          if (!found.length) { result.innerHTML = '<p class="verdict wait">입금 문자를 찾지 못했어요. 입금 문자가 보이게 다시 캡처하거나 금액을 직접 적어 주세요.</p>'; return; }
+          const amount = found.reduce((best, n) => Math.abs(n-expected) < Math.abs(best-expected) ? n : best);
+          amountInput.value = amount;
+          result.innerHTML = `${verdictHTML(amount, expected)}<p class="muted">캡처에서 읽은 입금액 ${money(amount)}${found.length > 1 ? ` (입금 ${found.length}건 중 예상액에 가장 가까운 것)` : ''}. 숫자가 틀리면 아래에서 고쳐 주세요.</p>`;
+        } catch {
+          result.innerHTML = '<p class="verdict wait">캡처를 읽지 못했어요. 인터넷 연결을 확인하거나 금액을 직접 적어 주세요.</p>';
+        }
+      });
     }
     function editCosts(day) {
       const costs = day ? state.visits[day] : defaultCosts(today());
@@ -411,9 +512,7 @@
           byId(button.id).focus();
           break;
         case 'deposit': {
-          const title = type === 'refund' ? '제약사 환급 입금' : '실비 입금';
-          const intro = statusOf(key)[type] ? '' : `<p>이번 주 예상액은 <strong>${type === 'insurance' ? '약 ' : ''}${money(visitsInWeek(key)*rates[type])}</strong>이에요. 이 정도 들어왔나요?</p>`;
-          editDate(key, type, title, '입금일', intro);
+          editDeposit(key, type);
           break;
         }
         case 'stock-start': {
